@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Odyssey Style Game</title>
+  <style>
+    body { margin:0; overflow:hidden; }
+    #ui {
+      position:absolute;
+      top:10px;
+      left:10px;
+      color:white;
+      font-family:Arial;
+      font-size:18px;
+    }
+  </style>
+</head>
+<body>
+<div id="ui">Coins: 0 | Reach the green zone!</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
+
+<script>
+let scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87CEEB);
+
+let camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
+let renderer = new THREE.WebGLRenderer();
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
+
+// LIGHT
+let light = new THREE.DirectionalLight(0xffffff,1);
+light.position.set(10,20,10);
+scene.add(light);
+
+// GROUND
+let ground = new THREE.Mesh(
+  new THREE.BoxGeometry(100,1,100),
+  new THREE.MeshStandardMaterial({color:0x444444})
+);
+ground.position.y = -0.5;
+scene.add(ground);
+
+// PLAYER
+let player = new THREE.Mesh(
+  new THREE.CapsuleGeometry(0.7,1.5,4,8),
+  new THREE.MeshStandardMaterial({color:0xff0000})
+);
+player.position.y = 2;
+scene.add(player);
+
+let velocityY = 0;
+let jumps = 0;
+
+// BUILDINGS
+let buildings = [];
+for(let i=0;i<30;i++){
+  let b = new THREE.Mesh(
+    new THREE.BoxGeometry(3,Math.random()*10+5,3),
+    new THREE.MeshStandardMaterial({color:0x888888})
+  );
+  b.position.set((Math.random()-0.5)*80, b.geometry.parameters.height/2, (Math.random()-0.5)*80);
+  scene.add(b);
+  buildings.push(b);
+}
+
+// COINS
+let coins = [];
+let coinCount = 0;
+for(let i=0;i<20;i++){
+  let coin = new THREE.Mesh(
+    new THREE.TorusGeometry(0.5,0.2,16,50),
+    new THREE.MeshStandardMaterial({color:0xffff00})
+  );
+  coin.position.set((Math.random()-0.5)*80,2,(Math.random()-0.5)*80);
+  scene.add(coin);
+  coins.push(coin);
+}
+
+// GOAL
+let goal = new THREE.Mesh(
+  new THREE.BoxGeometry(5,0.5,5),
+  new THREE.MeshStandardMaterial({color:0x00ff00})
+);
+goal.position.set(20,0.25,20);
+scene.add(goal);
+
+// ENEMIES
+let enemies = [];
+for(let i=0;i<5;i++){
+  let e = new THREE.Mesh(
+    new THREE.BoxGeometry(2,2,2),
+    new THREE.MeshStandardMaterial({color:0x0000ff})
+  );
+  e.position.set((Math.random()-0.5)*50,1,(Math.random()-0.5)*50);
+  scene.add(e);
+  enemies.push(e);
+}
+
+// CONTROLS
+let keys = {};
+document.addEventListener("keydown", e=>keys[e.key.toLowerCase()]=true);
+document.addEventListener("keyup", e=>keys[e.key.toLowerCase()]=false);
+
+// MOUSE LOOK
+let yaw = 0;
+document.addEventListener("mousemove", e=>{
+  if(document.pointerLockElement){
+    yaw -= e.movementX * 0.002;
+  }
+});
+document.body.onclick = ()=>document.body.requestPointerLock();
+
+// HATS
+let hats = [];
+function throwHat(){
+  let hat = new THREE.Mesh(
+    new THREE.SphereGeometry(0.4,16,16),
+    new THREE.MeshStandardMaterial({color:0xffffff})
+  );
+  hat.position.copy(player.position);
+  hat.userData.vel = new THREE.Vector3(Math.sin(yaw),0,Math.cos(yaw)).multiplyScalar(0.8);
+  scene.add(hat);
+  hats.push(hat);
+}
+document.addEventListener("mousedown", throwHat);
+
+// GAME LOOP
+function animate(){
+  requestAnimationFrame(animate);
+
+  let speed = 0.25;
+  let forward = new THREE.Vector3(Math.sin(yaw),0,Math.cos(yaw));
+  let right = new THREE.Vector3(forward.z,0,-forward.x);
+
+  if(keys["w"]) player.position.add(forward.clone().multiplyScalar(speed));
+  if(keys["s"]) player.position.add(forward.clone().multiplyScalar(-speed));
+  if(keys["a"]) player.position.add(right.clone().multiplyScalar(-speed));
+  if(keys["d"]) player.position.add(right.clone().multiplyScalar(speed));
+
+  // JUMP
+  if(keys[" "] && jumps < 2){
+    velocityY = 0.45;
+    jumps++;
+    keys[" "] = false;
+  }
+
+  velocityY -= 0.02;
+  player.position.y += velocityY;
+
+  if(player.position.y <= 2){
+    player.position.y = 2;
+    velocityY = 0;
+    jumps = 0;
+  }
+
+  // CAMERA
+  camera.position.set(
+    player.position.x - Math.sin(yaw)*10,
+    player.position.y + 6,
+    player.position.z - Math.cos(yaw)*10
+  );
+  camera.lookAt(player.position);
+
+  // COINS
+  coins.forEach((c,i)=>{
+    c.rotation.y += 0.1;
+    if(player.position.distanceTo(c.position) < 1.5){
+      scene.remove(c);
+      coins.splice(i,1);
+      coinCount++;
+      document.getElementById("ui").innerText = "Coins: "+coinCount+" | Reach the green zone!";
+    }
+  });
+
+  // ENEMIES AI
+  enemies.forEach((e,i)=>{
+    let dir = player.position.clone().sub(e.position).normalize();
+    e.position.add(dir.multiplyScalar(0.05));
+
+    if(player.position.distanceTo(e.position) < 1.5){
+      alert("Caught!");
+      location.reload();
+    }
+  });
+
+  // HATS
+  hats.forEach((h,hi)=>{
+    h.position.add(h.userData.vel);
+
+    enemies.forEach((e,ei)=>{
+      if(h.position.distanceTo(e.position)<1.5){
+        scene.remove(e);
+        enemies.splice(ei,1);
+      }
+    });
+
+    if(h.position.length()>100){
+      scene.remove(h);
+      hats.splice(hi,1);
+    }
+  });
+
+  // WIN
+  if(player.position.distanceTo(goal.position) < 3){
+    alert("You Win!");
+    location.reload();
+  }
+
+  renderer.render(scene,camera);
+}
+animate();
+</script>
+</body>
+</html>
